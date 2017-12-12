@@ -28,6 +28,8 @@ open class NMessengerBarView: InputBarView
     @IBOutlet open weak var photoPickerButton: UIButton!
     @IBOutlet open weak var badgeLabel: UILabel?
     
+    @IBOutlet open weak var inputTextPlaceholderLabel: UILabel?
+    
     //@IBOutlet for send button
     @IBOutlet open weak var sendButton: UIButton!
     //@IBOutlets NSLayoutConstraint input area view height
@@ -40,6 +42,23 @@ open class NMessengerBarView: InputBarView
     
     @IBOutlet weak var symbolsCounterLabel: UILabel?
     
+    private var isEmptyInputText: Bool = true
+    
+    public var text: String
+    {
+        if self.isEmptyInputText
+        {
+            return ""
+        }
+        
+        if let text = self.textInputView.text
+        {
+            return text
+        }
+        
+        return ""
+    }
+    
     //MARK: Public Parameters
     //Reference to CameraViewController
     open lazy var cameraVC: UIViewController /*protocol<ICameraViewController>*/ = CameraViewController()
@@ -49,11 +68,22 @@ open class NMessengerBarView: InputBarView
         return self.cameraVC as! ICameraViewController
     }
     
+    open var alertUtils: IModalAlertUtilities = ModalAlertUtilities()
+    {
+        didSet
+        {
+            self.cameraVcProto.alertUtils = self.alertUtils
+        }
+    }
     
     //CGFloat to the fine the number of rows a user can type
     open var numberOfRows: CGFloat = 3
     open var maxSymolsCountInMessage: Int? = nil
     open var minSymbolsToShowCounter: Int? = nil
+    open var isSendingEmptyTextAllowed: Bool = false
+    open var isPickerDismissedImplicitly: Bool = true
+    
+    open var canSendMessage: Bool = true
     
     //String as placeholder text in input view
     open var inputTextViewPlaceholder: String =
@@ -61,9 +91,17 @@ open class NMessengerBarView: InputBarView
                                      value: "==Write a message==",
                                      table: nil)
     {
-        willSet(newVal)
-        {
-            self.textInputView.text = newVal
+        willSet {
+            
+            // legacy code support
+            if let inputTextPlaceholderLabel = inputTextPlaceholderLabel
+            {
+                inputTextPlaceholderLabel.text = newValue
+            }
+            else
+            {
+                self.textInputView.text = newValue
+            }
         }
     }
     
@@ -148,9 +186,11 @@ open class NMessengerBarView: InputBarView
         self.addSubview(inputBarView)
         inputBarView.frame                = self.bounds
         textInputView.delegate            = self
-        self.sendButton.isEnabled         = false
+        self.disableSendButton()
         self.cameraVcProto.cameraDelegate = self
         self.symbolsCounterLabel?.isHidden = true
+        
+        self.inputTextPlaceholderLabel?.isUserInteractionEnabled = false
     }
     
     //MARK: TextView delegate methods
@@ -160,17 +200,25 @@ open class NMessengerBarView: InputBarView
      */
     open func textViewShouldBeginEditing(_ textView: UITextView) -> Bool
     {
-        textView.text = ""
-        textView.textColor = UIColor.n1DarkestGreyColor()
-        UIView.animate(withDuration: 0.1)
-        {
-            self.sendButton.isEnabled = true
+        // legacy code support
+        if self.inputTextPlaceholderLabel == nil {
+            
+            textView.text = ""
+            self.isEmptyInputText = true
+            
+            textView.textColor = UIColor.n1DarkestGreyColor()
+            
+            DispatchQueue.main.async
+            {
+                textView.selectedRange = NSMakeRange(0, 0)
+            }
         }
         
-        DispatchQueue.main.async
+        UIView.animate(withDuration: 0.1)
         {
-            textView.selectedRange = NSMakeRange(0, 0)
+            self.enableSendButton()
         }
+        
         return true
     }
     
@@ -179,24 +227,57 @@ open class NMessengerBarView: InputBarView
     */
     open func textViewShouldEndEditing(_ textView: UITextView) -> Bool
     {
-        if self.textInputView.text.isEmpty
+        if (nil != self.inputTextPlaceholderLabel)
         {
-            self.addInputSelectorPlaceholder()
+            let isNoText = self.textInputView.text.isEmpty
+            
+            if (isNoText)
+            {
+                UIView.animate(withDuration: 0.1)
+                {
+                    self.disableSendButton()
+                }
+            }
+            else
+            {
+                // idle
+            }
         }
-        
-        UIView.animate(withDuration: 0.1)
+        else
         {
-            self.sendButton.isEnabled = false
+            // legacy logic
+            
+            UIView.animate(withDuration: 0.1)
+            {
+                self.disableSendButton()
+            }
         }
         
         self.textInputView.resignFirstResponder()
         return true
     }
     
+    open func textView(
+        _ textView: UITextView,
+        shouldChangeTextIn range: NSRange,
+        replacementText text: String)
+    -> Bool
+    {
+        //
+        // Some logic deleted by A.Tyutin
+        // to allow inserting "> 4k" symbols
+        //
+        //
+        
+        self.isEmptyInputText = false
+        
+        return true
+    }
+    
     
     private func updateSendButton() {
         
-        var sendingAllowed = true
+        var sendingAllowed = false
         
         let text = self.textInputView.text
         
@@ -204,16 +285,19 @@ open class NMessengerBarView: InputBarView
             sendingAllowed = false
             
         } else {
-        
+            
             if let maxSymolsCountInMessage = self.maxSymolsCountInMessage {
                 
+                guard let requiredText = text else { return }
+                
                 sendingAllowed = text!.characters.count <= maxSymolsCountInMessage
+                sendingAllowed = sendingAllowed && self.containsSufficientSymbols(with: requiredText)
             }
         }
         
         UIView.animate(withDuration: 0.1) {
             
-            self.sendButton.isEnabled = sendingAllowed
+            self.updateSendButtonState(isSendingAllowed: sendingAllowed)
         }
     }
     
@@ -254,7 +338,7 @@ open class NMessengerBarView: InputBarView
         let options: NSStringDrawingOptions = [.usesLineFragmentOrigin,
                                                .usesFontLeading]
         
-        let attributes: [String: Any] = [NSFontAttributeName: textView.font!]
+        let attributes: [NSAttributedStringKey: Any] = [.font: textView.font!]
         
         
         let textBounds = CGSize(width: textWidth, height: 0)
@@ -284,6 +368,8 @@ open class NMessengerBarView: InputBarView
      */
     open func textViewDidChange(_ textView: UITextView)
     {
+        self.inputTextPlaceholderLabel?.isHidden = !textView.text.isEmpty
+        
         let fixedWidth = textView.frame.size.width
         
         var textSize = self.size(of: textView.text, in: textView)
@@ -310,26 +396,61 @@ open class NMessengerBarView: InputBarView
             let minSymbols = self.minSymbolsToShowCounter,
             let counterLabel = self.symbolsCounterLabel
         {
+            // TODO: localize `counterLabel.text` pattern
+            //
             counterLabel.text = "\(symbolsCount)/\n\(maxSymbols)"
-            counterLabel.isHidden = symbolsCount < minSymbols
-            counterLabel.textColor = symbolsCount <= maxSymbols ? UIColor.gray : UIColor.red
+            
+            counterLabel.isHidden = (symbolsCount < minSymbols)
+            counterLabel.textColor =
+                (symbolsCount <= maxSymbols)
+                    ? UIColor.gray
+                    : UIColor.red
         }
+        
+        var isEnabled = !(textView.text.isEmpty)
+        
+        if self.isSendingEmptyTextAllowed
+        {
+            isEnabled = true
+        }
+        
+        self.updateSendButtonState(isSendingAllowed: isEnabled)
         
         self.setNeedsLayout()
         self.layoutIfNeeded()
         
         self.updateSendButton()
+        
+        if !self.canSendMessage {
+            self.disableSendButton()
+        }
     }
     
     //MARK: TextView helper methods
     /**
      Adds placeholder text and change the color of textInputView
      */
+    
     fileprivate func addInputSelectorPlaceholder()
     {
         self.textInputView.text = self.inputTextViewPlaceholder
         self.textInputView.textColor = UIColor.lightGray
+        self.isEmptyInputText = true
+        
+        self.disableSendButton()
     }
+
+    /*
+     check text existance in textView's text without spaces and newLines
+     */
+    
+    fileprivate func containsSufficientSymbols(with text: String) -> Bool {
+        
+        let stringWithoutSpaces = text.replacingOccurrences(of: " ", with: "")
+        let stringWithoutNewLinesAndSpaces = stringWithoutSpaces.replacingOccurrences(of: "\n", with: "")
+        return !stringWithoutNewLinesAndSpaces.isEmpty
+    }
+    
     
     //MARK: @IBAction selectors
     /**
@@ -343,21 +464,63 @@ open class NMessengerBarView: InputBarView
     
     private func doSend()
     {
-        guard let currentText = self.textInputView.text,
-              !currentText.isEmpty
+        var currentText: String = ""
+        self.inputTextPlaceholderLabel?.isHidden = false
+        
+        if (self.isEmptyInputText)
+        {
+            currentText = ""
+        }
+        else if (!self.isSendingEmptyTextAllowed)
+        {
+            guard let legacyCurrentText = self.textInputView.text,
+                  !legacyCurrentText.isEmpty
+            else
+            {
+                return
+            }
+            
+            currentText = legacyCurrentText
+        }
         else
         {
-            return
+            currentText = self.textInputView.text ?? ""
         }
 
         self.controller.onSendButtonTapped(havingText: currentText)
-//        images.forEach
-//        {
-//            _ = self.sendImage($0, isIncomingMessage: false)
-//        }
-        
-        
         self.cleanupTextFieldAndResize()
+    }
+
+    fileprivate func updateSendButtonState(isSendingAllowed: Bool)
+    {
+        // duplicated assignments for easier debugging
+        //
+        if (isSendingAllowed)
+        {
+            self.enableSendButton()
+        }
+        else
+        {
+            self.disableSendButton()
+        }
+    }
+    
+    fileprivate func disableSendButton()
+    {
+        // duplicated assignments for easier debugging
+        //
+        
+        self.sendButton.isEnabled = false
+        self.sendButton.isUserInteractionEnabled = false
+    }
+    
+    fileprivate func enableSendButton()
+    {
+        // duplicated assignments for easier debugging
+        //
+        
+        self.sendButton.isEnabled = true
+        self.sendButton.isUserInteractionEnabled = true
     }
     
     private func cleanupTextFieldAndResize()
@@ -370,7 +533,12 @@ open class NMessengerBarView: InputBarView
             self.textInputViewHeightConst
             + textViewMarginsHeight
 
+        self.disableSendButton()
+        
         self.textInputView.text = ""
+        self.symbolsCounterLabel?.isHidden = true
+        
+        self.isEmptyInputText = true
     }
     
     
@@ -399,17 +567,17 @@ open class NMessengerBarView: InputBarView
                         
                     case (false, true):
                         
-                        ModalAlertUtilities
+                        strongSelf.alertUtils
                             .postGoToSettingToEnableCameraModal(fromController: strongSelf.cameraVC)
                         
                     case (true, false):
                         
-                        ModalAlertUtilities
+                        strongSelf.alertUtils
                             .postGoToSettingToEnableLibraryModal(fromController: strongSelf.cameraVC)
                         
                     case (false, false):
                         
-                        ModalAlertUtilities
+                        strongSelf.alertUtils
                             .postGoToSettingToEnableCameraAndLibraryModal(fromController: strongSelf.cameraVC)
                     }
                 })
@@ -455,15 +623,19 @@ open class NMessengerBarView: InputBarView
      */
     open func pickedImages(_ images: [UIImage])
     {
-        self.hidePickerView()
-        
+        if self.isPickerDismissedImplicitly
+        {
+            self.hidePickerView()
+        }
         self.controller.onImagesPicked(images)
-        
-//        images.forEach
-//        {
-//            _ = self.controller.sendImage($0, isIncomingMessage: false)
-//        }
     }
+    
+    open func pickedAssets(_ assets: [PHAsset])
+    {
+        self.controller.onAssetsPicked(assets)
+    }
+    
+
     
     
     private typealias ShowPickerViewCompletion = () -> Swift.Void
@@ -510,7 +682,7 @@ open class NMessengerBarView: InputBarView
         }
     }
     
-    private func hidePickerView()
+    open func hidePickerView()
     {
         DispatchQueue.main.async
         {
@@ -568,6 +740,20 @@ open class NMessengerBarView: InputBarView
         //
         // self.hidePickerView()
         
+        if (!assets.isEmpty)
+        {
+            // a side effect...
+            // to show the badge
+            // in case of multiselection
+            //
+            self.enableSendButton()
+        }
+        
         self.controller.onAssetsPicked(assets)
+    }
+    
+    public func nmessengerDidShowPicker()
+    {
+        self.controller.nmessengerDidShowPicker()
     }
 }

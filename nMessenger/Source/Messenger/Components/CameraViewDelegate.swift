@@ -38,6 +38,8 @@ public protocol CameraViewDelegate : class
      Should define behavior cancel button is tapped
      */
     func cameraCancelSelection()
+    
+    func nmessengerDidShowPicker()
 }
 
 

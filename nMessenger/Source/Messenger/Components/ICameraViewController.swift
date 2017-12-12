@@ -19,11 +19,15 @@ public typealias PhotoLibraryPermissionCallback = (Bool) -> Void
 public protocol ICameraViewController : class
 {
     weak var cameraDelegate: CameraViewDelegate?   { get set }
+    var alertUtils         : IModalAlertUtilities  { get set }
     
     var cameraAuthStatus   : AVAuthorizationStatus { get }
     var photoLibAuthStatus : PHAuthorizationStatus { get }
 
-    func isCameraPermissionGranted(_ completion:@escaping CameraPermissionCallback)
+    func isCameraPermissionGranted(_ completion: @escaping CameraPermissionCallback)
     func requestPhotoLibraryPermissions(_ completion: @escaping PhotoLibraryPermissionCallback)
+    
+    func cleanupSelectedAttachments()
+    func removeSelectedAttachment(at index: Int)
 }
 
