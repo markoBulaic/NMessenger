@@ -52,11 +52,15 @@ open class NMessengerViewController: UIViewController
     //MARK: Private Variables
     //Bool to indicate if the keyboard is open
     //
-    open fileprivate(set) var isKeyboardIsShown : Bool = false
+    open var isKeyboardIsShown : Bool = false
     
     //NSLayoutConstraint for the input bar spacing from the bottom
     //
-    fileprivate var inputBarBottomSpacing:NSLayoutConstraint = NSLayoutConstraint()
+    open fileprivate(set) var inputBarBottomSpacing:NSLayoutConstraint = NSLayoutConstraint()
+    
+    //NSLayoutConstraint for the messageBoard from the bottom
+    //
+    fileprivate var messageBoardBottomConstraint: NSLayoutConstraint? = nil
     
     //MARK: Public Variables
     //UIEdgeInsets for padding for each message
@@ -66,6 +70,38 @@ open class NMessengerViewController: UIViewController
                     left: 0,
                   bottom: 5,
                    right: 0)
+    
+    open var searchBarOffset: CGFloat = 0 {
+        didSet {
+            self.messageViewTopConstraint?.constant = self.searchBarOffset
+        }
+    }
+    
+    // workaround for stickers.
+    open var stickersIsShowing: Bool = false
+    
+    open func inputBarIsFocused() {
+        // IDLE
+    }
+    
+    
+    open var isInputBarHidden: Bool = false {
+        didSet {
+            self.updateInputBarVisibility()
+        }
+    }
+    
+    func updateInputBarVisibility() {
+        if self.isInputBarHidden {
+            self.inputBarBottomSpacing.constant = self.inputBarView.frame.height
+        } else {
+            self.inputBarBottomSpacing.constant = 0
+        }
+        
+        self.view.layoutIfNeeded()
+    }
+    
+    open var messageViewTopConstraint: NSLayoutConstraint? = nil
     
     /** A shared bubble configuration to use for new messages. Defaults to **SharedBubbleConfiguration***/
     open var sharedBubbleConfiguration: BubbleConfigurationProtocol = StandardBubbleConfiguration()
@@ -128,6 +164,11 @@ open class NMessengerViewController: UIViewController
         // TODO: might be different
         // if mixed "text and image" content is allowed
         //
+    }
+    
+    open func nmessengerDidShowPicker()
+    {
+        // IDLE
     }
     
     open func onSendButtonTapped(havingText currentText: String)
@@ -206,9 +247,9 @@ open class NMessengerViewController: UIViewController
     {
         let messengerViewFrame =
             CGRect(x: 0,
-                   y: 0,
+                   y: self.searchBarOffset,
                width: self.view.frame.size.width,
-              height: self.view.frame.size.height - 63)
+              height: self.view.frame.size.height - 63 - self.searchBarOffset)
         
         self.messengerView = NMessenger(frame: messengerViewFrame)
         messengerView.delegate = self
@@ -234,20 +275,119 @@ open class NMessengerViewController: UIViewController
     /**
      Adds auto layout constraints for NMessenger and InputBarView
      */
+    fileprivate func setupConstraintsForInputBar()
+    {
+        self.inputBarView.translatesAutoresizingMaskIntoConstraints = false
+
+        if #available(iOS 11.0, *) {
+            
+            self.inputBarBottomSpacing = NSLayoutConstraint(item: self.inputBarView,
+                                                            attribute: .bottom,
+                                                            relatedBy: .equal,
+                                                            toItem: self.view.safeAreaLayoutGuide,
+                                                            attribute: .bottom,
+                                                            multiplier: 1,
+                                                            constant: 0)
+            
+            self.view.addConstraint(self.inputBarBottomSpacing)
+        } else {
+            self.inputBarBottomSpacing = NSLayoutConstraint(item: self.inputBarView,
+                                                            attribute: .bottom,
+                                                            relatedBy: .equal,
+                                                            toItem: self.bottomLayoutGuide,
+                                                            attribute: .top,
+                                                            multiplier: 1,
+                                                            constant: 0)
+            
+            self.view.addConstraint(self.inputBarBottomSpacing)
+        }
+        
+        self.view.addConstraint(
+            NSLayoutConstraint(
+                item: self.inputBarView,
+                attribute: .leading,
+                relatedBy: .equal,
+                toItem: self.view,
+                attribute: .leading,
+                multiplier: 1, constant: 0))
+        
+        self.view.addConstraint(
+            NSLayoutConstraint(
+                item: self.inputBarView,
+                attribute: .trailing,
+                relatedBy: .equal,
+                toItem: self.view,
+                attribute: .trailing,
+                multiplier: 1,
+                constant: 0))
+
+        let heightConstant = max(self.inputBarView.frame.size.height, 43)
+        
+        self.view.addConstraint(
+            NSLayoutConstraint(
+            item: self.inputBarView,
+            attribute: .height,
+            relatedBy: .greaterThanOrEqual,
+            toItem: nil,
+            attribute: .notAnAttribute,
+            multiplier: 1.0,
+            constant: heightConstant))
+    }
+    
+    fileprivate func setupConstraintsForMessengerView()
+    {
+        self.messengerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let topConstraint = NSLayoutConstraint(
+            item: self.messengerView,
+            attribute: .top,
+            relatedBy: .equal,
+            toItem: self.topLayoutGuide,
+            attribute: .bottom,
+            multiplier: 1,
+            constant: self.searchBarOffset)
+        
+        self.messageViewTopConstraint = topConstraint
+        
+        self.view.addConstraint(topConstraint)
+        
+        self.view.addConstraint(
+            NSLayoutConstraint(
+                item: self.messengerView,
+                attribute: .leading,
+                relatedBy: .equal,
+                toItem: self.view,
+                attribute: .leading,
+                multiplier: 1,
+                constant: 0))
+        
+        self.view.addConstraint(
+            NSLayoutConstraint(
+                item: self.messengerView,
+                attribute: .trailing,
+                relatedBy: .equal,
+                toItem: self.view,
+                attribute: .trailing,
+                multiplier: 1,
+                constant: 0))
+        
+        let messageBoardBottomConstraint = NSLayoutConstraint(
+            item: self.messengerView,
+            attribute: .bottom,
+            relatedBy: .equal,
+            toItem: inputBarView,
+            attribute: .top,
+            multiplier: 1.0,
+            constant: 0)
+        
+        self.view.addConstraint(messageBoardBottomConstraint)
+        self.messageBoardBottomConstraint = messageBoardBottomConstraint
+    }
+    
     fileprivate func setUpConstraintsForViews()
     {
-        inputBarView.translatesAutoresizingMaskIntoConstraints = false
-        self.inputBarBottomSpacing = NSLayoutConstraint(item: self.inputBarView, attribute: .bottom, relatedBy: .equal, toItem: self.bottomLayoutGuide, attribute: .top, multiplier: 1, constant: 0)
-        self.view.addConstraint(self.inputBarBottomSpacing)
-        self.view.addConstraint(NSLayoutConstraint(item: self.inputBarView, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .leading, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.inputBarView, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: inputBarView, attribute: .height, relatedBy: .greaterThanOrEqual, toItem: nil, attribute: .notAnAttribute, multiplier: 1.0, constant: self.inputBarView.frame.size.height))
-        self.view.addConstraint(NSLayoutConstraint(item: inputBarView, attribute: .height, relatedBy: .greaterThanOrEqual, toItem: nil, attribute: .notAnAttribute, multiplier: 1.0, constant: 43))
-        self.messengerView.translatesAutoresizingMaskIntoConstraints = false
-        self.view.addConstraint(NSLayoutConstraint(item: self.messengerView, attribute: .top, relatedBy: .equal, toItem: self.topLayoutGuide, attribute: .bottom, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.messengerView, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .leading, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.messengerView, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.messengerView, attribute: .bottom, relatedBy: .equal, toItem: inputBarView, attribute: .top, multiplier: 1.0, constant: 0))
+        self.setupConstraintsForInputBar()
+        self.setupConstraintsForMessengerView()
     }
     
     open override var shouldAutorotate: Bool {
@@ -268,69 +408,74 @@ open class NMessengerViewController: UIViewController
     /**
      Moves InputBarView up and down accoridng to the location of the keyboard
      */
-    func keyboardNotification(_ notification: Notification)
-    {
-        if let userInfo = (notification as NSNotification).userInfo
-        {
+    @objc func keyboardNotification(_ notification: Notification) {
+        
+        guard !self.isInputBarHidden else { return }
+        
+        if let userInfo = (notification as NSNotification).userInfo {
+            
             let endFrame = (userInfo[UIKeyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
             let duration:TimeInterval = (userInfo[UIKeyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
-            let animationCurveRawNSN = userInfo[UIKeyboardAnimationCurveUserInfoKey] as? NSNumber
-            let animationCurveRaw = animationCurveRawNSN?.uintValue ?? UIViewAnimationOptions().rawValue
-            let animationCurve:UIViewAnimationOptions = UIViewAnimationOptions(rawValue: animationCurveRaw)
+            let animationCurve: UIViewAnimationOptions = .curveEaseOut
             
+            print(animationCurve)
             
-            let newKeyboardLocation = endFrame
-            let keyboardHeight = newKeyboardLocation?.size.height ?? 0
-            let inputBarHeight = inputBarView.frame.height
-            
-            let tabBarHeight = self.tabBarController?.tabBar.frame.size.height ?? 0
-            
-            let isKeyboardOffScreen =
-                (newKeyboardLocation?.origin.y >= UIScreen.main.bounds.size.height)
-            
-            let inputViewShiftOffsetY = keyboardHeight - tabBarHeight
-            
-            if (isKeyboardOffScreen)
-            {
-                self.inputBarBottomSpacing.constant = 0
-                /*let bottomInset*/ _ = inputBarView.frame.height
+            if endFrame?.origin.y >= UIScreen.main.bounds.size.height {
                 self.isKeyboardIsShown = false
-            }
-            else
-            {
-                let isInputBarHasNoBottomSpacing = (self.inputBarBottomSpacing.constant == 0)
                 
-                if (isInputBarHasNoBottomSpacing)
-                {
-                    self.inputBarBottomSpacing.constant -= inputViewShiftOffsetY
-                    /*let bottomInset*/ _ = inputViewShiftOffsetY + inputBarHeight
-                }
-                else
-                {
+                if !self.stickersIsShowing {
                     self.inputBarBottomSpacing.constant = 0
-                    self.inputBarBottomSpacing.constant -= inputViewShiftOffsetY
-                    /*let bottomInset*/ _ = inputViewShiftOffsetY + inputBarHeight
                 }
+                
+            } else {
                 self.isKeyboardIsShown = true
+                
+                // support for iphone X
+                let resultHeight: CGFloat
+                let height = endFrame?.size.height ?? 0
+                if #available(iOS 11.0, *) {
+                    let bottomInset: CGFloat = UIApplication.shared.keyWindow?.rootViewController?.view.safeAreaInsets.bottom ?? 0
+                    resultHeight = height - bottomInset
+                } else {
+                    resultHeight = height
+                }
+                
+                if !self.stickersIsShowing {
+                    if self.inputBarBottomSpacing.constant == 0 {
+                        self.inputBarBottomSpacing.constant -= resultHeight
+                    } else {
+                        self.inputBarBottomSpacing.constant = 0
+                        self.inputBarBottomSpacing.constant -= resultHeight
+                        
+                    }
+                }
             }
             
-            let animationsBlock: () -> Swift.Void =
-            {
+            
+            let animationBlock: () -> Void = {
+                
                 self.view.layoutIfNeeded()
-                if self.isKeyboardIsShown
-                {
+                if self.shouldScrollToLastMessageOnKeyboardEvent() {
                     self.messengerView.scrollToLastMessage(animated: true)
                 }
             }
             
-            let noDelay: TimeInterval = 0
             UIView.animate(withDuration: duration,
-                                  delay: noDelay,
-                                options: animationCurve,
-                             animations: animationsBlock,
-                             completion: nil)
-            
+                           delay: TimeInterval(0),
+                           options: animationCurve,
+                           animations: animationBlock,
+                           completion: nil)
         }
+    }
+    
+    public func updateMessageBoardBottomConstraint(with constant: CGFloat) {
+        self.messageBoardBottomConstraint?.constant = constant
+        self.messengerView.scrollToLastMessage(animated: true)
+    }
+    
+    open func shouldScrollToLastMessageOnKeyboardEvent() -> Bool
+    {
+        return self.isKeyboardIsShown
     }
     
     //MARK: Gesture Recognizers Selector
@@ -338,7 +483,7 @@ open class NMessengerViewController: UIViewController
     /**
      Closes the messenger on swipe on InputBarView
      */
-    func respondToSwipeGesture(_ gesture: UIGestureRecognizer) {
+    @objc open func respondToSwipeGesture(_ gesture: UIGestureRecognizer) {
         self.inputBarView.textInputView.resignFirstResponder()
     }
     
@@ -406,9 +551,9 @@ open class NMessengerViewController: UIViewController
     {
         message.currentViewController = self
         if message.isIncomingMessage == false {
-            self.messengerView.addMessage(message, scrollsToMessage: true, withAnimation: .right)
+            self.messengerView.addMessage(message, scrollsToMessage: true, withAnimation: .none)
         } else {
-            self.messengerView.addMessage(message, scrollsToMessage: true, withAnimation: .left)
+            self.messengerView.addMessage(message, scrollsToMessage: true, withAnimation: .none)
         }
     }
     
@@ -679,4 +824,44 @@ open class NMessengerViewController: UIViewController
         return newMessage
     }
     
+
+    // MARK: - NMessengerDelegate
+    //
+    open func getTabBarHeight() -> CGFloat
+    {
+        guard let tabBar = self.tabBarController?.tabBar else { return 0 }
+        
+        if (!tabBar.isHidden)
+        {
+            let tabBarHeight = tabBar.frame.size.height
+            return tabBarHeight
+        }
+        else
+        {
+            return 0
+        }
+    }
+    
+    
+    // method is shit
+    open func screenHasTabBar() -> Bool
+    {
+        guard let tabBar = self.tabBarController?.tabBar else { return false }
+        
+        return !tabBar.isHidden
+    }
+    
+    open func nMessenger(
+        _ sender: NMessenger,
+        didShowKeyboardVerticalOffset yOffset: CGFloat)
+    {
+        // IDLE
+    }
+    
+    open  func nMessenger(
+        _ sender: NMessenger,
+        didHideKeyboardVerticalOffset yOffset: CGFloat)
+    {
+        // IDLE
+    }
 }
