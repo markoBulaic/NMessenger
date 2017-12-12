@@ -11,50 +11,131 @@
 import Foundation
 import UIKit
 
+
+
+public protocol IModalAlertUtilities
+{
+    func postGenericErrorModal(fromController controller: UIViewController)
+    
+    func postGoToSettingToEnableCameraAndLibraryModal(
+        fromController controller: UIViewController)
+
+    func postGoToSettingToEnableCameraModal(fromController controller: UIViewController)
+
+    func postGoToSettingToEnableLibraryModal(fromController controller: UIViewController)
+}
+
+
 //MARK: ModalAlertUtilities class
 /**
  Custom alerts for NMessenger
  */
-open class ModalAlertUtilities {
+public struct ModalAlertUtilities: IModalAlertUtilities
+{
+    public let errorAlertTitle        : String
+    public let errorAlertMessage      : String
+    public let errorAlertDismissButton: String
+    public let cameraAndLibraryMessage: String
+    public let cameraOnlyMessage      : String
+    public let libraryOnlyMessage     : String
+    public let cancelButton           : String
+    public let openSettingsMessage    : String
+    
+    public init()
+    {
+        self.errorAlertTitle   = "Error"
+        self.errorAlertMessage = "An error occurred. Please try again later"
+        self.errorAlertDismissButton = "Okay"
+        
+        self.cameraAndLibraryMessage =
+        "Allow access to your camera & photo library to start uploading photos with N1"
+        
+        self.cameraOnlyMessage =
+        "Allow access to your camera to start taking photos and uploading photos from your library with N1"
+        
+        self.libraryOnlyMessage =
+        "Allow access to your photo library to start uploading photos from you library with N1"
+        
+        self.cancelButton = "Cancel"
+        self.openSettingsMessage = "Go to Settings"
+    }
+    
+    public init(
+        errorAlertTitle: String,
+        errorAlertMessage: String,
+        errorAlertDismissButton: String,
+        cameraAndLibraryMessage: String,
+        cameraOnlyMessage: String,
+        libraryOnlyMessage: String,
+        cancelButton: String,
+        openSettingsMessage: String)
+    {
+        self.errorAlertTitle         = errorAlertTitle
+        self.errorAlertMessage       = errorAlertMessage
+        self.errorAlertDismissButton = errorAlertDismissButton
+        self.cameraAndLibraryMessage = cameraAndLibraryMessage
+        self.cameraOnlyMessage       = cameraOnlyMessage
+        self.libraryOnlyMessage      = libraryOnlyMessage
+        self.cancelButton            = cancelButton
+        self.openSettingsMessage     = openSettingsMessage
+    }
+    
     /**
      General error alert message
      - parameter controller: Must be UIViewController. Where to present to alert.
      */
-    class func postGenericErrorModal(fromController controller: UIViewController) {
-        let alert = UIAlertController(title: "Error", message: "An error occurred. Please try again later", preferredStyle: .alert)
-        let cancelAction = UIAlertAction(title: "Okay", style: .cancel) { (action) in
-            alert.dismiss(animated: true, completion: nil)
-        }
+    public func postGenericErrorModal(fromController controller: UIViewController)
+    {
+        let alert =
+            UIAlertController(
+                title: self.errorAlertTitle,
+                message: self.errorAlertMessage,
+                preferredStyle: .alert)
+        
+        
+        let cancelAction =
+            UIAlertAction(
+            title: self.errorAlertDismissButton,
+            style: .cancel,
+            handler: nil)
+
+        
         alert.addAction(cancelAction)
-        DispatchQueue.main.async(execute: { () -> Void in
+        DispatchQueue.main.async
+        {
             controller.present(alert, animated: true, completion: nil)
-        })
+        }
     }
+    
+    
     /**
      Camera permission alert message
      - parameter controller: Must be UIViewController. Where to present to alert.
      Alert tells user to go into setting to enable permission for both camera and photo library
      */
-    class func postGoToSettingToEnableCameraAndLibraryModal(
+    public func postGoToSettingToEnableCameraAndLibraryModal(
                                         fromController controller: UIViewController)
     {
         // TODO: should be localized or injected from app
         //
-        let message = "Allow access to your camera & photo library to start uploading photos with N1"
+        let message = self.cameraAndLibraryMessage
         
-        let alert = UIAlertController(title: "",
-                                    message: message,
-                             preferredStyle: .alert)
+        let alert =
+            UIAlertController(
+                title: "",
+                message: message,
+                preferredStyle: .alert)
         
-        let cancelAction = UIAlertAction(title: "Cancel", style: .destructive)
+        let cancelAction = UIAlertAction(title: self.cancelButton, style: .destructive)
         {
             (action) in
             alert.dismiss(animated: true, completion: nil)
         }
         
-        let settingsAction = UIAlertAction(title: "Go to Settings", style: .default)
+        let settingsAction = UIAlertAction(title: self.openSettingsMessage, style: .default)
         {
             (alertAction) in
+            
             if let appSettings = URL(string: UIApplicationOpenSettingsURLString)
             {
                 UIApplication.shared.openURL(appSettings)
@@ -74,45 +155,71 @@ open class ModalAlertUtilities {
      - parameter controller: Must be UIViewController. Where to present to alert.
      Alert tells user to go into setting to enable permission for camera
      */
-    class func postGoToSettingToEnableCameraModal(fromController controller: UIViewController)
+    public func postGoToSettingToEnableCameraModal(fromController controller: UIViewController)
     {
-        let alert = UIAlertController(title: "", message: "Allow access to your camera to start taking photos and uploading photos from your library with N1", preferredStyle: .alert)
-        let cancelAction = UIAlertAction(title: "Cancel", style: .destructive) { (action) in
-            alert.dismiss(animated: true, completion: nil)
-        }
-        let settingsAction = UIAlertAction(title: "Go to Settings", style: .default) { (alertAction) in
-            if let appSettings = URL(string: UIApplicationOpenSettingsURLString) {
+        let alert =
+            UIAlertController(
+                title: "",
+                message: self.cameraOnlyMessage,
+                preferredStyle: .alert)
+        
+        let cancelAction =
+            UIAlertAction(
+                title: self.cancelButton,
+                style: .destructive,
+                handler: nil)
+
+        let settingsAction = UIAlertAction(title: self.openSettingsMessage, style: .default)
+        {
+            (alertAction) in
+            
+            if let appSettings = URL(string: UIApplicationOpenSettingsURLString)
+            {
                 UIApplication.shared.openURL(appSettings)
             }
         }
         alert.addAction(settingsAction)
         alert.addAction(cancelAction)
         
-        DispatchQueue.main.async(execute: { () -> Void in
+        DispatchQueue.main.async
+        {
             controller.present(alert, animated: true, completion: nil)
-        })
+        }
     }
     /**
      Camera permission alert message
      - parameter controller: Must be UIViewController. Where to present to alert.
      Alert tells user to go into setting to enable permission for photo library
      */
-    class func postGoToSettingToEnableLibraryModal(fromController controller: UIViewController)
+    public func postGoToSettingToEnableLibraryModal(fromController controller: UIViewController)
     {
-        let alert = UIAlertController(title: "", message: "Allow access to your photo library to start uploading photos from you library with N1", preferredStyle: .alert)
-        let cancelAction = UIAlertAction(title: "Cancel", style: .destructive) { (action) in
-            alert.dismiss(animated: true, completion: nil)
-        }
-        let settingsAction = UIAlertAction(title: "Go to Settings", style: .default) { (alertAction) in
-            if let appSettings = URL(string: UIApplicationOpenSettingsURLString) {
+        let alert =
+            UIAlertController(
+                title: "",
+                message: self.libraryOnlyMessage,
+                preferredStyle: .alert)
+        
+        let cancelAction =
+            UIAlertAction(
+                title: self.cancelButton,
+                style: .destructive,
+                handler: nil)
+
+        let settingsAction = UIAlertAction(title: self.openSettingsMessage, style: .default)
+        {
+            (alertAction) in
+            
+            if let appSettings = URL(string: UIApplicationOpenSettingsURLString)
+            {
                 UIApplication.shared.openURL(appSettings)
             }
         }
         alert.addAction(settingsAction)
         alert.addAction(cancelAction)
         
-        DispatchQueue.main.async(execute: { () -> Void in
+        DispatchQueue.main.async
+        {
             controller.present(alert, animated: true, completion: nil)
-        })
+        }
     }
 }

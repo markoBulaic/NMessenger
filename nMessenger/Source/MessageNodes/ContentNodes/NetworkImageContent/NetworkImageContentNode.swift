@@ -107,11 +107,26 @@ open class NetworkImageContentNode: ContentNode,ASNetworkImageNodeDelegate {
             let touchLocation = recognizer.location(in: view)
             if self.networkImageMessageNode.frame.contains(touchLocation) {
                 
-                view.becomeFirstResponder()
+                self.view.becomeFirstResponder()
                 
-                delay(0.1, closure: {
+                self.delay(0.1, closure: {
                     let menuController = UIMenuController.shared
-                    menuController.menuItems = [UIMenuItem(title: "Copy", action: #selector(NetworkImageContentNode.copySelector))]
+                    
+                    let localizedCopyTitle = NSLocalizedString(
+                        "NMessenger.NetworkImageContentNode.Menu.Copy",
+                        comment: "Copy")
+                    let copyTitle =
+                        (localizedCopyTitle.isEmpty)
+                            ? "Copy"
+                            : localizedCopyTitle
+                    
+                    menuController.menuItems =
+                    [
+                        UIMenuItem(
+                            title: copyTitle,
+                            action: #selector(NetworkImageContentNode.copySelector))
+                    ]
+                    
                     menuController.setTargetRect(self.networkImageMessageNode.frame, in: self.view)
                     menuController.setMenuVisible(true, animated:true)
                 })
@@ -123,7 +138,7 @@ open class NetworkImageContentNode: ContentNode,ASNetworkImageNodeDelegate {
      Copy Selector for UIMenuController
      Puts the node's image on UIPasteboard
      */
-    open func copySelector() {
+    @objc open func copySelector() {
         if let image = self.networkImageMessageNode.image {
             UIPasteboard.general.image = image
         }

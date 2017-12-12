@@ -126,29 +126,17 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
             "PhoneNumberAttribute"
         ]
         
-        let fontAndSizeAndTextColor =
-        [
-            NSFontAttributeName:
-                self.isIncomingMessage
-                    ? self.incomingTextFont
-                    : self.outgoingTextFont,
-            
-            NSForegroundColorAttributeName:
-                self.isIncomingMessage
-                    ? incomingTextColor
-                    : outgoingTextColor
-        ]
+        let fontAndSizeAndTextColor: [NSAttributedStringKey: Any] = self.isIncomingMessage
+            ? [.font: self.incomingTextFont,
+               .foregroundColor: incomingTextColor]
+            : [.font: self.outgoingTextFont,
+               .foregroundColor: outgoingTextColor]
         
-        let outputString =
-            NSMutableAttributedString(
-                string: textMessageString,
-                attributes: fontAndSizeAndTextColor)
+        let outputString = NSMutableAttributedString(string: textMessageString,
+                                                     attributes: fontAndSizeAndTextColor)
         
-        let types: NSTextCheckingResult.CheckingType =
-        [
-            .link,
-            .phoneNumber
-        ]
+        let types: NSTextCheckingResult.CheckingType = [.link,
+            .phoneNumber]
         
         let detector = try! NSDataDetector(types: types.rawValue)
         let matches =
@@ -158,39 +146,34 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
                 range: NSMakeRange(0, textMessageString.characters.count))
         
         for match in matches {
-            if let url = match.url
-            {
-                outputString.addAttribute(
-                    "LinkAttribute",
-                    value: url,
-                    range: match.range)
+            if let url = match.url {
+                outputString.addAttribute(.link,
+                                          value: url,
+                                          range: match.range)
                 
-                outputString.addAttribute(
-                    NSUnderlineStyleAttributeName,
-                    value: NSUnderlineStyle.styleSingle.rawValue,
-                    range: match.range)
+                outputString.addAttribute(.underlineStyle,
+                                          value: NSUnderlineStyle.styleSingle.rawValue,
+                                          range: match.range)
                 
-                outputString.addAttribute(
-                    NSForegroundColorAttributeName,
-                    value: UIColor.blue,
-                    range: match.range)
+                outputString.addAttribute(.foregroundColor,
+                                          value: UIColor.blue,
+                                          range: match.range)
             }
-            if let phoneNumber = match.phoneNumber
-            {
-                outputString.addAttribute(
-                    "PhoneNumberAttribute",
-                    value: phoneNumber,
-                    range: match.range)
+            
+            if let phoneNumber = match.phoneNumber {
+                // shouldn't that be a link too?
+                // with "tel:\phoneNumber" URL
+                outputString.addAttribute(NSAttributedStringKey(rawValue: "PhoneNumberAttribute"),
+                                          value: phoneNumber,
+                                          range: match.range)
                 
-                outputString.addAttribute(
-                    NSUnderlineStyleAttributeName,
-                    value: NSUnderlineStyle.styleSingle.rawValue,
-                    range: match.range)
+                outputString.addAttribute(.underlineStyle,
+                                          value: NSUnderlineStyle.styleSingle.rawValue,
+                                          range: match.range)
                 
-                outputString.addAttribute(
-                    NSForegroundColorAttributeName,
-                    value: UIColor.blue,
-                    range: match.range)
+                outputString.addAttribute(.foregroundColor,
+                                          value: UIColor.blue,
+                                          range: match.range)
             }
         }
         self.textMessageNode.attributedText = outputString
@@ -203,7 +186,9 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
     /** Updates the attributed string to the correct incoming/outgoing settings and lays out the component again*/
     fileprivate func updateAttributedText() {
         let tmpString = NSMutableAttributedString(attributedString: self.textMessageNode.attributedText!)
-        tmpString.addAttributes([NSForegroundColorAttributeName: isIncomingMessage ? incomingTextColor : outgoingTextColor, NSFontAttributeName: isIncomingMessage ? incomingTextFont : outgoingTextFont], range: NSMakeRange(0, tmpString.length))
+        tmpString.addAttributes([.foregroundColor: isIncomingMessage ? incomingTextColor : outgoingTextColor,
+                                 .font: isIncomingMessage ? incomingTextFont : outgoingTextFont],
+                                range: NSMakeRange(0, tmpString.length))
         self.textMessageNode.attributedText = tmpString
         
         setNeedsLayout()
@@ -280,14 +265,14 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
                 if let tmpString = self.textMessageNode.attributedText
                 {
                     let attributedString =  NSMutableAttributedString(attributedString: tmpString)
-                    attributedString.addAttribute(NSBackgroundColorAttributeName, value: UIColor.lightGray, range: textRange)
+                    attributedString.addAttribute(.backgroundColor, value: UIColor.lightGray, range: textRange)
                     self.textMessageNode.attributedText = attributedString
                     UIApplication.shared.openURL(value as! URL)
                     delay(0.4) {
                         if let tmpString = self.textMessageNode.attributedText
                         {
                             let attributedString =  NSMutableAttributedString(attributedString: tmpString)
-                            attributedString.removeAttribute(NSBackgroundColorAttributeName, range: textRange)
+                            attributedString.removeAttribute(.backgroundColor, range: textRange)
                             self.textMessageNode.attributedText = attributedString
                         }
                     }
@@ -328,7 +313,7 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
             if let tmpString = self.textMessageNode.attributedText
             {
                 let attributedString =  NSMutableAttributedString(attributedString: tmpString)
-                attributedString.addAttribute(NSBackgroundColorAttributeName, value: UIColor.lightGray, range: textRange)
+                attributedString.addAttribute(NSAttributedStringKey.backgroundColor, value: UIColor.lightGray, range: textRange)
                 self.textMessageNode.attributedText = attributedString
 
                 let optionMenu = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
@@ -370,7 +355,7 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
                 if let tmpString = self.textMessageNode.attributedText
                 {
                     let attributedString =  NSMutableAttributedString(attributedString: tmpString)
-                    attributedString.removeAttribute(NSBackgroundColorAttributeName, range: textRange)
+                    attributedString.removeAttribute(NSAttributedStringKey.backgroundColor, range: textRange)
                     self.textMessageNode.attributedText = attributedString
                 }
             }
@@ -382,7 +367,7 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
             if let tmpString = self.textMessageNode.attributedText
             {
                 let attributedString =  NSMutableAttributedString(attributedString: tmpString)
-                attributedString.addAttribute(NSBackgroundColorAttributeName, value: UIColor.lightGray, range: textRange)
+                attributedString.addAttribute(NSAttributedStringKey.backgroundColor, value: UIColor.lightGray, range: textRange)
                 self.textMessageNode.attributedText = attributedString
                 let optionMenu = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
                 
@@ -436,7 +421,7 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
                 if let tmpString = self.textMessageNode.attributedText
                 {
                     let attributedString =  NSMutableAttributedString(attributedString: tmpString)
-                    attributedString.removeAttribute(NSBackgroundColorAttributeName, range: textRange)
+                    attributedString.removeAttribute(NSAttributedStringKey.backgroundColor, range: textRange)
                     self.textMessageNode.attributedText = attributedString
                 }
             }
@@ -463,13 +448,31 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
      Override method from superclass
      */
     open override func messageNodeLongPressSelector(_ recognizer: UITapGestureRecognizer) {
-        if recognizer.state == UIGestureRecognizerState.began {
-            let touchLocation = recognizer.location(in: view)
-            if self.textMessageNode.frame.contains(touchLocation) {
-                becomeFirstResponder()
-                delay(0.1, closure: {
+        if recognizer.state == UIGestureRecognizerState.began
+        {
+            let touchLocation = recognizer.location(in: self.view)
+            if self.textMessageNode.frame.contains(touchLocation)
+            {
+                self.becomeFirstResponder()
+                self.delay(0.1, closure: {
                     let menuController = UIMenuController.shared
-                    menuController.menuItems = [UIMenuItem(title: "Copy", action: #selector(TextContentNode.copySelector))]
+                    
+                    let localizedCopyTitle = NSLocalizedString(
+                        "NMessenger.TextContentNode.Menu.Copy",
+                        comment: "Copy")
+                    
+                    let copyTitle =
+                        (localizedCopyTitle.isEmpty)
+                            ? "Copy"
+                            : localizedCopyTitle
+                    
+                    menuController.menuItems =
+                    [
+                        UIMenuItem(
+                            title: copyTitle,
+                            action: #selector(TextContentNode.copySelector))
+                    ]
+                    
                     menuController.setTargetRect(self.textMessageNode.frame, in: self.view)
                     menuController.setMenuVisible(true, animated:true)
                 })
@@ -480,7 +483,7 @@ open class TextContentNode: ContentNode,ASTextNodeDelegate {
     /**
      Copy Selector for UIMenuController
      */
-    open func copySelector() {
+    @objc open func copySelector() {
         UIPasteboard.general.string = self.textMessageNode.attributedText!.string
     }
     
