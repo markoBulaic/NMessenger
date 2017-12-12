@@ -22,6 +22,7 @@
 		0D9046611ED2DEBE00C18A2D /* Icon_add_photo.png in Resources */ = {isa = PBXBuildFile; fileRef = 0D90465E1ED2DEBE00C18A2D /* Icon_add_photo.png */; };
 		0D9046621ED2DEBE00C18A2D /* Icon_add_photo@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 0D90465F1ED2DEBE00C18A2D /* Icon_add_photo@2x.png */; };
 		0D9046631ED2DEBE00C18A2D /* Icon_add_photo@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 0D9046601ED2DEBE00C18A2D /* Icon_add_photo@3x.png */; };
+		0DD406F11FE02775007F7297 /* MixedContentNodeWithTimestamp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD406F01FE02775007F7297 /* MixedContentNodeWithTimestamp.swift */; };
 		190C89BD1D40175200CF3512 /* NMessengerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190C89BC1D40175200CF3512 /* NMessengerTests.swift */; };
 		190C89C61D40181A00CF3512 /* BubbleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190C89C01D40181A00CF3512 /* BubbleTests.swift */; };
 		190C89C71D40181A00CF3512 /* CollectionViewContentNodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190C89C11D40181A00CF3512 /* CollectionViewContentNodeTests.swift */; };
@@ -412,6 +413,7 @@
 		0D90465E1ED2DEBE00C18A2D /* Icon_add_photo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon_add_photo.png; sourceTree = "<group>"; };
 		0D90465F1ED2DEBE00C18A2D /* Icon_add_photo@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon_add_photo@2x.png"; sourceTree = "<group>"; };
 		0D9046601ED2DEBE00C18A2D /* Icon_add_photo@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon_add_photo@3x.png"; sourceTree = "<group>"; };
+		0DD406F01FE02775007F7297 /* MixedContentNodeWithTimestamp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixedContentNodeWithTimestamp.swift; sourceTree = "<group>"; };
 		118604259124D3DC9BCBA458 /* Pods_nMessenger.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_nMessenger.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		190C89BC1D40175200CF3512 /* NMessengerTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NMessengerTests.swift; sourceTree = "<group>"; };
 		190C89C01D40181A00CF3512 /* BubbleTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BubbleTests.swift; sourceTree = "<group>"; };
@@ -669,6 +671,14 @@
 				0D2344931ECEE035009BE227 /* MultiselectPickerLocalizer.swift */,
 			);
 			path = MultiselectPicker;
+			sourceTree = "<group>";
+		};
+		0DD406EF1FE0275C007F7297 /* MixedContentNode */ = {
+			isa = PBXGroup;
+			children = (
+				0DD406F01FE02775007F7297 /* MixedContentNodeWithTimestamp.swift */,
+			);
+			path = MixedContentNode;
 			sourceTree = "<group>";
 		};
 		190C89BB1D40175100CF3512 /* Messenger */ = {
@@ -1036,6 +1046,7 @@
 		F1FC871A1D63813700F3C21C /* ContentNodes */ = {
 			isa = PBXGroup;
 			children = (
+				0DD406EF1FE0275C007F7297 /* MixedContentNode */,
 				F1FC871B1D63813700F3C21C /* CollectionViewContent */,
 				F1FC871E1D63813700F3C21C /* ContentNode.swift */,
 				F1FC871F1D63813700F3C21C /* CustomContent */,
@@ -1818,6 +1829,7 @@
 				616280321D81978000D1F510 /* NMessengerViewController.swift in Sources */,
 				6162804B1D81A71A00D1F510 /* Bubble.swift in Sources */,
 				7EDF49DF1F1CEE3D002CB14E /* CameraViewDelegate.swift in Sources */,
+				0DD406F11FE02775007F7297 /* MixedContentNodeWithTimestamp.swift in Sources */,
 				6162805B1D81A80C00D1F510 /* MessageCellProtocol.swift in Sources */,
 				0D9046591ED2CFA900C18A2D /* PickedImageHelper.swift in Sources */,
 				616280491D81A71500D1F510 /* SimpleBubbleConfiguration.swift in Sources */,
