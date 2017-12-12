@@ -16,22 +16,7 @@ import AVFoundation
 
 
 
-//MARK: CameraViewController
-/**
- CameraViewDelegate protocol for NMessenger.
- Defines methods to be implemented inorder to use the CameraViewController
- */
-public protocol CameraViewDelegate : class
-{
-    /**
-     Should define behavior when a photo is selected
-     */
-    func pickedImages(_ image: [UIImage])
-    /**
-     Should define behavior cancel button is tapped
-     */
-    func cameraCancelSelection()
-}
+
 //MARK: SelectionType
 /**
  SelectionType enum for NMessenger.
@@ -42,6 +27,8 @@ public enum SelectionType
     case camera
     case library
 }
+
+
 //MARK: CameraViewController
 /**
  CameraViewController class for NMessenger.
@@ -60,13 +47,15 @@ open class CameraViewController: UIImagePickerController
     //
     open weak var cameraDelegate: CameraViewDelegate?
     
+    open var alertUtils: IModalAlertUtilities = ModalAlertUtilities()
+    
     //SelectionType type of selection the user is making  - defualt is camera
     //
     open var selection = SelectionType.camera
     
     //AVAuthorizationStatus authorization status for the camera
     //
-    open var cameraAuthStatus = AVCaptureDevice.authorizationStatus(forMediaType: AVMediaTypeVideo)
+    open var cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.video)
     
     //PHAuthorizationStatus authorization status for the library
     //
@@ -220,7 +209,7 @@ open class CameraViewController: UIImagePickerController
         else
         {
             self.cameraAuthStatus =
-                AVCaptureDevice.authorizationStatus(forMediaType: AVMediaTypeVideo)
+                AVCaptureDevice.authorizationStatus(for: AVMediaType.video)
             
             if (self.isPhotoLibraryUnauthorized())
             {
@@ -241,7 +230,7 @@ open class CameraViewController: UIImagePickerController
                             let presentingViewController =
                                 self.cameraDelegate as! NMessengerViewController
                             
-                            ModalAlertUtilities.postGoToSettingToEnableLibraryModal(
+                            self.alertUtils.postGoToSettingToEnableLibraryModal(
                                 fromController: presentingViewController)
                         }
                     }
@@ -274,7 +263,7 @@ open class CameraViewController: UIImagePickerController
                 else
                 {
                     self.photoLibAuthStatus = PHPhotoLibrary.authorizationStatus()
-                    ModalAlertUtilities.postGoToSettingToEnableLibraryModal(fromController: self)
+                    self.alertUtils.postGoToSettingToEnableLibraryModal(fromController: self)
                 }
             })
             
@@ -527,6 +516,10 @@ open class CameraViewController: UIImagePickerController
         if let myImageExisting = myImage
         {
             self.cameraDelegate?.pickedImages([myImageExisting])
+            
+            // TODO: 
+            //
+            //self.cameraDelegate?.pickedImageAssets([assetForMyImage])
         }
     }
     /**
@@ -551,7 +544,7 @@ open class CameraViewController: UIImagePickerController
     /**
      Changes between camera view and gallery view
      */
-    open func changePictureMode()
+    @objc open func changePictureMode()
     {
         switch self.selection
         {
@@ -604,21 +597,21 @@ open class CameraViewController: UIImagePickerController
     /**
      Closes the view
      */
-    open func exitButtonPressed()
+    @objc open func exitButtonPressed()
     {
         self.cameraDelegate?.cameraCancelSelection()
     }
     /**
      Takes a photo
      */
-    open func capture(_ sender: UIButton)
+    @objc open func capture(_ sender: UIButton)
     {
         self.takePicture()
     }
     /**
      Enables/disables flash
      */
-    open func toggleFlash(_ sender: UIButton)
+    @objc open func toggleFlash(_ sender: UIButton)
     {
         if (!sender.isSelected)
         {
@@ -649,7 +642,7 @@ open class CameraViewController: UIImagePickerController
     /**
      Changes the camera from front to back
      */
-    open func flipCamera(_ sender: UIButton)
+    @objc open func flipCamera(_ sender: UIButton)
     {
         if (!sender.isSelected)
         {
@@ -693,7 +686,7 @@ open class CameraViewController: UIImagePickerController
             (granted) in
             
             weakSelf?.cameraAuthStatus =
-                AVCaptureDevice.authorizationStatus(forMediaType: AVMediaTypeVideo)
+                AVCaptureDevice.authorizationStatus(for: AVMediaType.video)
             
             completion(granted)
         }
@@ -707,7 +700,7 @@ open class CameraViewController: UIImagePickerController
     open func requestAccessForCamera(
         _ completion:@escaping CameraPermissionCallback)
     {
-        AVCaptureDevice.requestAccess(forMediaType: AVMediaTypeVideo,
+        AVCaptureDevice.requestAccess(for: AVMediaType.video,
                                  completionHandler: completion)
     }
     
@@ -733,5 +726,14 @@ open class CameraViewController: UIImagePickerController
                 case .denied, .notDetermined, .restricted : completion(false)
             }
         }
+    }
+    
+    open func cleanupSelectedAttachments()
+    {
+        // IDLE - multiple selection not supported by this class
+    }
+    
+    public func removeSelectedAttachment(at index: Int) {
+        // IDLE - Not supported here
     }
 }
