@@ -18,6 +18,8 @@ import AsyncDisplayKit
  */
 open class ImageContentNode: ContentNode {
     
+    open var imageAspectRatio: CGFloat = 4.0 / 3.0
+    
     // MARK: Public Variables
     /** UIImage as the image of the cell*/
     open var image: UIImage? {
@@ -77,7 +79,7 @@ open class ImageContentNode: ContentNode {
         
         let width = constrainedSize.max.width
         self.imageMessageNode.style.width = ASDimension(unit: .points, value: width)
-        self.imageMessageNode.style.height = ASDimension(unit: .points, value: width/4*3)
+        self.imageMessageNode.style.height = ASDimension(unit: .points, value: width/self.imageAspectRatio)
         let absLayout = ASAbsoluteLayoutSpec()
         absLayout.sizing = .sizeToFit
         absLayout.children = [self.imageMessageNode]
@@ -99,14 +101,29 @@ open class ImageContentNode: ContentNode {
     open override func messageNodeLongPressSelector(_ recognizer: UITapGestureRecognizer) {
         if recognizer.state == UIGestureRecognizerState.began {
             
-            let touchLocation = recognizer.location(in: view)
+            let touchLocation = recognizer.location(in: self.view)
             if self.imageMessageNode.frame.contains(touchLocation) {
                 
-                view.becomeFirstResponder()
+                self.view.becomeFirstResponder()
                 
-                delay(0.1, closure: {
+                self.delay(0.1, closure: {
                     let menuController = UIMenuController.shared
-                    menuController.menuItems = [UIMenuItem(title: "Copy", action: #selector(ImageContentNode.copySelector))]
+                    
+                    let localizedCopyTitle = NSLocalizedString(
+                        "NMessenger.ImageContentNode.Menu.Copy",
+                        comment: "Copy")
+                    let copyTitle =
+                        (localizedCopyTitle.isEmpty)
+                            ? "Copy"
+                            : localizedCopyTitle
+                    
+                    menuController.menuItems =
+                    [
+                        UIMenuItem(
+                            title: copyTitle,
+                            action: #selector(ImageContentNode.copySelector))
+                    ]
+                    
                     menuController.setTargetRect(self.imageMessageNode.frame, in: self.view)
                     menuController.setMenuVisible(true, animated:true)
                 })
@@ -118,7 +135,7 @@ open class ImageContentNode: ContentNode {
      Copy Selector for UIMenuController
      Puts the node's image on UIPasteboard
      */
-    open func copySelector() {
+    @objc open func copySelector() {
         if let image = self.image {
             UIPasteboard.general.image = image
         }
