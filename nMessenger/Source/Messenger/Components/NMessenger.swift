@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import CoreGraphics
 import AsyncDisplayKit
 
 @objc public protocol NMessengerDelegate {
@@ -17,8 +18,20 @@ import AsyncDisplayKit
      Make sure to add prefetched content with *endBatchFetchWithMessages(messages: [GeneralMessengerCell])*
      */
     @objc optional func batchFetchContent()
+   
     /** Returns a newly created loading Indicator that should be used at the top of the messenger */
     @objc optional func batchFetchLoadingIndicator()->GeneralMessengerCell
+    
+    @objc func getTabBarHeight() -> CGFloat
+    @objc func screenHasTabBar() -> Bool
+    
+    @objc func nMessenger(
+        _ sender: NMessenger,
+        didShowKeyboardVerticalOffset yOffset: CGFloat)
+    
+    @objc func nMessenger(
+        _ sender: NMessenger,
+        didHideKeyboardVerticalOffset yOffset: CGFloat)
 }
 
 //MARK: NMessengerSemaphore
@@ -97,26 +110,29 @@ open class NMessenger: UIView {
     
     public init() {
         super.init(frame: CGRect.zero)
-        setupView()
+        self.setupView()
     }
     
     public override init(frame: CGRect) {
         super.init(frame: frame)
-        setupView()
+        self.setupView()
     }
     
     public required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
-        setupView()
+        self.setupView()
     }
     
     /** Creates the messenger tableview and sets defaults*/
     fileprivate func setupView() {
         
-        self.messengerNode.view.keyboardDismissMode = .onDrag
-        self.addSubview((messengerNode.view))
+        let messengerNode     = self.messengerNode
+        let messengerNodeView = messengerNode.view
         
-        messengerNode.delegate = self
+        messengerNodeView.keyboardDismissMode = .onDrag
+        self.addSubview(messengerNodeView)
+        
+        messengerNode.delegate   = self
         messengerNode.dataSource = self
         
         let tuningParameters =
@@ -125,20 +141,121 @@ open class NMessenger: UIView {
                 trailingBufferScreenfuls: 1)
         messengerNode.setTuningParameters(tuningParameters, for: .display)
         
-        messengerNode.view.separatorStyle = UITableViewCellSeparatorStyle.none
-        messengerNode.view.allowsSelection = false
-        messengerNode.view.showsVerticalScrollIndicator = false
-        messengerNode.view.automaticallyAdjustsContentOffset = true
+        messengerNodeView.separatorStyle = UITableViewCellSeparatorStyle.none
+        messengerNodeView.allowsSelection                   = false
+        messengerNodeView.showsVerticalScrollIndicator      = false
+        messengerNodeView.automaticallyAdjustsContentOffset = true
+        // invert cells in tableView
+        messengerNodeView.inverted = true
+        // invert tableView
+        messengerNode.inverted = true
     }
     
     //MARK: Public functions
     
     /** Override layoutSubviews to update messenger table frame*/
-    override open func layoutSubviews() {
+    override open func layoutSubviews()
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] layoutSubviews")
+        
         super.layoutSubviews()
         //update frame
         messengerNode.frame = self.bounds
         messengerNode.view.separatorStyle = UITableViewCellSeparatorStyle.none
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] layoutSubviews")
+    }
+    
+    open func moveMessage(
+        _ message: GeneralMessengerCell,
+        to index: Int,
+        completion: (()->Void)? = nil)
+    {
+        self.implMoveMessage(message, to: index, completion: completion)
+    }
+    
+    private func implMoveMessage(
+        _ message: GeneralMessengerCell,
+        to index: Int,
+        completion: (()->Void)? = nil)
+    {
+        precondition(Thread.isMainThread)
+        precondition(0 != self.state.itemCount)
+        
+        self.removeMessagesWithBlock(
+            [message],
+            animation: .none)
+        {
+            DispatchQueue.main.async
+            {
+                // crashes otherwise
+                // since `.state.cellsBuffer` size is out of sync with "message to delete" index
+                //
+                let scrollsToBottomMustBeTrue: Bool = true
+                
+                
+                self.addMessagesWithBlock(
+                    [message],
+                    scrollsToMessage: scrollsToBottomMustBeTrue,
+                    withAnimation: .bottom,
+                    completion: completion)
+            }
+        }
+    }
+    
+    private func rawTableMoveMessage(
+        _ message: GeneralMessengerCell,
+        to index: Int)
+    {
+        precondition(Thread.isMainThread)
+        precondition(0 != self.state.itemCount)
+        
+        let table = self.messengerNode
+        
+        let bottomIndexPath =
+            IndexPath(
+                row: index,
+                section: NMessengerSection.messenger.rawValue)
+        
+        self.waitForMessageLock
+        {
+            [weak self] in
+            
+            guard let strongSelf = self,
+                  let messageIndexPath = table.indexPath(for: message)
+            else
+            {
+                self?.state.messageLock.signal()
+                return
+            }
+            
+            if let messageIndexInBuffer = strongSelf.state.cellBuffer.index(of: message)
+            {
+                strongSelf.state.cellBuffer.remove(at: messageIndexInBuffer)
+                strongSelf.state.cellBuffer.insert(message, at: index)
+            }
+            
+            DispatchQueue.main.async
+            {
+                precondition(Thread.isMainThread)
+                table.moveRow(at: messageIndexPath, to: bottomIndexPath)
+            }
+            
+            strongSelf.state.messageLock.signal()
+        }
+    }
+    
+    open func moveMessageToBottom(
+        _ message: GeneralMessengerCell,
+        completion: (()->Void)? = nil)
+    {
+        precondition(Thread.isMainThread)
+        precondition(0 != self.state.itemCount)
+        
+        let isInverted = true
+        let bottomIndex: Int = (isInverted) ? 0 : (self.state.itemCount - 1)
+        
+        self.moveMessage(message, to: bottomIndex, completion: completion)
     }
     
     //MARK: Adding messages
@@ -196,9 +313,24 @@ open class NMessenger: UIView {
      message
      - parameter completion: A completion handler
      */
-    open func addMessagesWithBlock(_ messages: [GeneralMessengerCell], scrollsToMessage: Bool, withAnimation animation: UITableViewRowAnimation, completion: (()->Void)?) {
-        self.waitForMessageLock {
-            self.addMessages(messages, atIndex: self.state.itemCount, scrollsToMessage: scrollsToMessage, animation: animation, completion:  completion)
+    open func addMessagesWithBlock(
+        _ messages: [GeneralMessengerCell],
+        scrollsToMessage: Bool,
+        withAnimation animation: UITableViewRowAnimation,
+        completion: (()->Void)?)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] addMessagesWithBlock.waitForMessageLock")
+        
+        self.waitForMessageLock
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] addMessagesWithBlock.waitForMessageLock")
+            
+            self.addMessages(
+                messages,
+                atIndex: 0,
+                scrollsToMessage: scrollsToMessage,
+                animation: animation,
+                completion:  completion)
         }
     }
     /**
@@ -209,32 +341,43 @@ open class NMessenger: UIView {
      - parameter messages: messages to add to the head of the tableview
      */
     open func endBatchFetchWithMessages(_ messages: [GeneralMessengerCell]) {
+        
+//        NSLog("=== NMessenger.endBatchFetchWithMessages()")
+        
         //make sure we are in the process of a batch fetch
         
         let addMessageCompletionBlock =
         {
+//            NSLog("=== NMessenger.endBatchFetchWithMessages() - ASBatchContext.completeBatchFetching")
             self.state.batchFetchLock.completeBatchFetching(true)
         }
         
         let removeCellsCompletionBlock =
         {
             self.addMessages( messages,
-                     atIndex: 0,
+                     atIndex: self.allMessages().count,
             scrollsToMessage: false,
                    animation: .none,
                   completion: addMessageCompletionBlock)
         }
         
-        if self.state.batchFetchLock.isFetching() {
-            self.waitForMessageLock {
-
-                let cellToRemoveIndex =
-                    IndexPath(row: 0, section: NMessengerSection.messenger.rawValue)
+        if self.state.batchFetchLock.isFetching()
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] endBatchFetchWithMessages.waitForMessageLock ")
+            self.waitForMessageLock
+            {
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] endBatchFetchWithMessages.waitForMessageLock ")
                 
-                self.removeCells(
-                            atIndexes: [cellToRemoveIndex],
-                            animation: .none,
-                           completion: removeCellsCompletionBlock)
+                let lastRow = self.allMessages().count - 1 // inverted ASTableNode has loading indicator on last position, not first
+                if lastRow >= 0 {
+                    let cellToRemoveIndex =
+                        IndexPath(row: lastRow, section: NMessengerSection.messenger.rawValue)
+                    
+                    self.removeCells(
+                        atIndexes: [cellToRemoveIndex],
+                        animation: .none,
+                        completion: removeCellsCompletionBlock)
+                }
             }
         }
     }
@@ -243,13 +386,20 @@ open class NMessenger: UIView {
     /**
      Clears all messages in the messenger. (Fire and forget)
      */
-    open func clearALLMessages() {
-        self.waitForMessageLock {
+    open func clearALLMessages()
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] clearALLMessages.waitForMessageLock ")
+        self.waitForMessageLock
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] clearALLMessages.waitForMessageLock ")
+            
             DispatchQueue.main.async {
                 let oldState = self.state
                 self.state.itemCount = 0
                 self.renderDiff(oldState, startIndex: 0, animation: .none, completion: {
                     //must decrement the semaphore
+                    
+//                    NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - clearALLMessages")
                     self.state.messageLock.signal()
                 })
             }
@@ -282,8 +432,16 @@ open class NMessenger: UIView {
      - parameter messages: the messages that should be deleted
      - parameter animation: a row animation for deleting the cell
      */
-    open func removeMessagesWithBlock(_ messages: [GeneralMessengerCell], animation: UITableViewRowAnimation, completion: (()->Void)?) {
-        self.waitForMessageLock {
+    open func removeMessagesWithBlock(
+        _ messages: [GeneralMessengerCell],
+        animation: UITableViewRowAnimation,
+        completion: (()->Void)?)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] removeMessagesWithBlock.waitForMessageLock ")
+        self.waitForMessageLock
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] removeMessagesWithBlock.waitForMessageLock ")
+            
             DispatchQueue.main.async {
                 var indexPaths = [IndexPath]()
                 for message in messages {
@@ -295,10 +453,25 @@ open class NMessenger: UIView {
                 }
                 self.removeCells(atIndexes: indexPaths, animation: animation, completion: {
                     //unlock the semaphore
+                    
+//                    NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - removeMessagesWithBlock")
                     self.state.messageLock.signal()
                     completion?()
                 })
             }
+        }
+    }
+    
+    open func replaceMessage(_ message: GeneralMessengerCell,
+                             withNewMessage newMessage: GeneralMessengerCell,
+                             animated: Bool) {
+        
+        if let nodeIndex = self.messengerNode.indexPath(for: message) {
+            self.state.cellBuffer = [newMessage]
+            self.state.cellBufferStartIndex = nodeIndex.row
+            message.currentTableNode = nil
+            newMessage.currentTableNode = self.messengerNode
+            self.messengerNode.reloadRows(at: [nodeIndex], with: animated ? .automatic : .none)
         }
     }
     
@@ -307,13 +480,23 @@ open class NMessenger: UIView {
      Scrolls to the last message in the messenger. (Fire and forget)
      - parameter animated: The move is animated or not
      */
-    open func scrollToLastMessage(animated: Bool) {
-        waitForMessageLock {
-            DispatchQueue.main.async {
-                if let indexPath = self.pickLastIndexPath() {
-                    self.scrollToIndex((indexPath as NSIndexPath).row, inSection: (indexPath as NSIndexPath).section, atPosition: .bottom, animated: animated)
-                }
+    open func scrollToLastMessage(animated: Bool)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] scrollToLastMessage.waitForMessageLock ")
+        self.waitForMessageLock
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] scrollToLastMessage.waitForMessageLock")
+            DispatchQueue.main.async
+            {
+                // because ASTableNode is reversed
+                self.scrollToIndex(0,
+                                   inSection: NMessengerSection.messenger.rawValue,
+                                   atPosition: .top,
+                                   animated: animated)
+                
                 //unlock the semaphore
+                
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - scrollToLastMessage")
                 self.state.messageLock.signal()
             }
         }
@@ -325,13 +508,29 @@ open class NMessenger: UIView {
      - parameter atPosition: The location to scroll to
      - parameter animated: The move is animated or not
      */
-    open func scrollToMessage(_ message: GeneralMessengerCell, atPosition position: UITableViewScrollPosition, animated: Bool) {
-        waitForMessageLock {
-            DispatchQueue.main.async {
-                if let indexPath = self.messengerNode.indexPath(for: message) {
-                    self.scrollToIndex((indexPath as NSIndexPath).row, inSection: (indexPath as NSIndexPath).section, atPosition: position, animated: animated)
+    open func scrollToMessage(
+        _ message: GeneralMessengerCell,
+        atPosition position: UITableViewScrollPosition,
+        animated: Bool)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] scrollToMessage.waitForMessageLock")
+        self.waitForMessageLock
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] scrollToMessage.waitForMessageLock")
+            
+            DispatchQueue.main.async
+            {
+                if let indexPath = self.messengerNode.indexPath(for: message)
+                {
+                    self.scrollToIndex(
+                        (indexPath as NSIndexPath).row,
+                        inSection: (indexPath as NSIndexPath).section,
+                        atPosition: position,
+                        animated: animated)
                 }
+                
                 //unlock the semaphore
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - scrollToMessage")
                 self.state.messageLock.signal()
             }
         }
@@ -344,24 +543,43 @@ open class NMessenger: UIView {
      - parameter scrollsToLast: should the messenger scroll to the bottom
      - parameter animated: If the scroll is animated
      */
-    open func addTypingIndicator(_ indicator: GeneralMessengerCell, scrollsToLast: Bool, animated: Bool, completion: (()->Void)?) {
-        waitForMessageLock {
-            DispatchQueue.main.async {
+    open func addTypingIndicator(
+        _ indicator: GeneralMessengerCell,
+        scrollsToLast: Bool,
+        animated: Bool,
+        completion: (()->Void)?)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] addTypingIndicator.waitForMessageLock")
+        self.waitForMessageLock
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] addTypingIndicator.waitForMessageLock")
+            
+            DispatchQueue.main.async
+            {
                 self.state.typingIndicators.append(indicator)
                 let set = IndexSet(integer: NMessengerSection.typingIndicator.rawValue)
                 CATransaction.begin()
                 CATransaction.setCompletionBlock(completion)
-                self.messengerNode.performBatch(animated: true, updates: { 
-                    self.messengerNode.reloadSections(set, with: .left)
-                }, completion: { (finished) in
-                    if scrollsToLast {
-                        if let indexPath = self.pickLastIndexPath() {
-                            self.scrollToIndex((indexPath as NSIndexPath).row, inSection: (indexPath as NSIndexPath).section, atPosition: .bottom, animated: true)
+                self.messengerNode.performBatch(
+                    animated: true,
+                    updates: {
+                        self.messengerNode.reloadSections(set, with: .left)
+                    },
+                    completion: { (finished) in
+                        if scrollsToLast {
+                            if let indexPath = self.pickLastIndexPath() {
+                                self.scrollToIndex(
+                                    (indexPath as NSIndexPath).row,
+                                    inSection: (indexPath as NSIndexPath).section,
+                                    atPosition: .bottom,
+                                    animated: true)
+                            }
                         }
-                    }
+                    
                     //unlock the semaphore
+//                    NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - addTypingIndicator")
                     self.state.messageLock.signal()
-                })
+                    })
                 CATransaction.commit()
             }
         }
@@ -383,9 +601,20 @@ open class NMessenger: UIView {
      - parameter scrollsToLast: should the messenger scroll to the bottom
      - parameter animated: If the scroll is animated
      */
-    open func removeTypingIndicator(_ indicator: GeneralMessengerCell, scrollsToLast: Bool, animated: Bool, completion: (()->Void)?) {
-        waitForMessageLock {
-            DispatchQueue.main.async {
+    open func removeTypingIndicator(
+        _ indicator: GeneralMessengerCell,
+        scrollsToLast: Bool,
+        animated: Bool,
+        completion: (()->Void)?)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] removeTypingIndicator")
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] removeTypingIndicator.waitForMessageLock)")
+        self.waitForMessageLock {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] removeTypingIndicator.waitForMessageLock")
+            
+            DispatchQueue.main.async
+            {
                 if let index = self.state.typingIndicators.index(of: indicator){
 
                     self.state.typingIndicators.remove(at: index)
@@ -397,11 +626,18 @@ open class NMessenger: UIView {
                         self.messengerNode.reloadSections(set, with: .fade)
                     }, completion: { (finished) in
                         if scrollsToLast {
-                            if let indexPath = self.pickLastIndexPath() {
-                                self.scrollToIndex((indexPath as NSIndexPath).row, inSection: (indexPath as NSIndexPath).section, atPosition: .bottom, animated: true)
+                            if let indexPath = self.pickLastIndexPath()
+                            {
+                                self.scrollToIndex(
+                                    (indexPath as NSIndexPath).row,
+                                    inSection: (indexPath as NSIndexPath).section,
+                                    atPosition: .bottom,
+                                    animated: true)
                             }
                         }
+                        
                         //unlock the semaphore
+//                        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - removeTypingIndicator")
                         self.state.messageLock.signal()
                     })
                     CATransaction.commit()
@@ -414,6 +650,8 @@ open class NMessenger: UIView {
      - returns: true if the messenger contains the loading indicator
      */
     open func hasIndicator(_ indicator: GeneralMessengerCell) -> Bool {
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] hasIndicator")
         return self.state.typingIndicators.contains(indicator)
     }
     
@@ -425,6 +663,9 @@ open class NMessenger: UIView {
      - returns: A Bool indicating whether or not the cell exists in the messenger
      */
     open func hasMessage(_ message: GeneralMessengerCell) -> Bool {
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] hasMessage")
+        
         let hasNode = (self.messengerNode.indexPath(for: message) != nil)
         return hasNode
     }
@@ -435,13 +676,28 @@ open class NMessenger: UIView {
      - returns: An array containing all of the messages in the messager. These are in order as they appear.
      */
     open func allMessages() -> [GeneralMessengerCell] {
-        var retArray = [GeneralMessengerCell]()
-        for index in 0..<self.state.itemCount {
-            let indexPath = IndexPath(row: index, section: NMessengerSection.messenger.rawValue)
-            if let message = self.messengerNode.view.nodeForRow(at: indexPath) as? GeneralMessengerCell {
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] allMessages")
+        
+        var retArray: [GeneralMessengerCell] = []
+        for index in 0..<self.state.itemCount
+        {
+            let indexPath =
+                IndexPath(
+                    row: index,
+                    section: NMessengerSection.messenger.rawValue)
+            
+            let maybeRawNode =
+                self.messengerNode.view.nodeForRow(
+                    at: indexPath)
+            
+            if let message = maybeRawNode as? GeneralMessengerCell
+            {
                 retArray.append(message)
             }
         }
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] allMessages")
         
         return retArray
     }
@@ -456,8 +712,12 @@ open class NMessenger: UIView {
     fileprivate func waitForMessageLock(_ completion: @escaping ()->Void) {
         //DispatchQueue.global(priority: DispatchQueue.GlobalQueuePriority.default).async {
             
-        DispatchQueue.global().async {
+        DispatchQueue.global().async
+        {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] waitForMessageLock - begin.")
             _ = self.state.messageLock.wait(timeout: DispatchTime.distantFuture)
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] waitForMessageLock - end.")
+            
             completion()
         }
     }
@@ -477,9 +737,13 @@ open class NMessenger: UIView {
                                   animation: UITableViewRowAnimation,
                                  completion: (()->Void)?)
     {
-        DispatchQueue.main.async
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] addMessages.")
+        
+        let action: () -> Void =
         {
-            if messages.count > 0
+            precondition(Thread.isMainThread)
+            
+            if (!messages.isEmpty)
             {
                 //set the new state
                 //
@@ -488,7 +752,7 @@ open class NMessenger: UIView {
                 
                 //add new cells to the buffer and set their start index
                 //
-                self.state.cellBufferStartIndex = index
+                self.state.cellBufferStartIndex = scrollsToMessage ? 0 : index
                 self.state.cellBuffer = messages
                 
                 //set current table
@@ -504,7 +768,8 @@ open class NMessenger: UIView {
                     {
                         //reset start index
                         self.state.cellBufferStartIndex = Int.max
-                        self.state.cellBuffer = [GeneralMessengerCell]()
+                        self.state.cellBuffer = []
+                        
                         //scroll to the message
                         if scrollsToMessage
                         {
@@ -512,14 +777,19 @@ open class NMessenger: UIView {
                             {
                                 let castedIndexPath = (indexPath as NSIndexPath)
                                 
-                                self.scrollToIndex( castedIndexPath.row,
-                                         inSection: castedIndexPath.section,
-                                        atPosition: .bottom,
-                                          animated: true)
+                                self.scrollToIndex( 0,
+                                                    inSection: castedIndexPath.section,
+                                                    atPosition: .top,
+                                                    animated: true)
                             }
                         }
                         //unlock the semaphore
+                        
+//                        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - addMessages.renderDiff")
                         self.state.messageLock.signal()
+                        
+                        
+//                        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] addMessages.")
                         completion?()
                     }
                 }
@@ -527,17 +797,31 @@ open class NMessenger: UIView {
                 //render new cells
                 //
                 self.renderDiff(oldState,
-                     startIndex: self.state.cellBufferStartIndex,
-                      animation: animation,
-                     completion: renderDiffCompletionBlock)
+                                startIndex: scrollsToMessage ? 0 : self.state.itemCount - messages.count,
+                                animation: animation,
+                                completion: renderDiffCompletionBlock)
             }
             else
             {
                 //unlock the semaphore
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] messageLock.signal - addMessages.zero")
                 self.state.messageLock.signal()
+                
+                
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] addMessages.")
                 completion?()
             }
         }
+        
+        if (Thread.isMainThread)
+        {
+            action()
+        }
+        else
+        {
+            DispatchQueue.main.async(execute: action)
+        }
+
     }
     
     /**
@@ -574,9 +858,21 @@ open class NMessenger: UIView {
      Offest is from the top of the messengerNode ASTableView
      - parameter offset: the offset from the top of the scrollview
      */
-    fileprivate func shouldHandleBatchFetch(_ offset: CGPoint) {
-        if doesBatchFetch && self.messengerDelegate.batchFetchContent != nil {
-            if shouldBatchFetch(self.state.batchFetchLock, direction: self.state.scrollDirection, bounds: messengerNode.view.bounds, contentSize: messengerNode.view.contentSize, targetOffset: offset, leadingScreens: messengerNode.view.leadingScreensForBatching) {
+    fileprivate func shouldHandleBatchFetch(_ offset: CGPoint)
+    {
+        let isCallbackAvailable = (self.messengerDelegate.batchFetchContent != nil)
+        
+        if self.doesBatchFetch && isCallbackAvailable
+        {
+            if self.shouldBatchFetch(
+                self.state.batchFetchLock,
+                direction: self.state.scrollDirection,
+                bounds: messengerNode.view.bounds,
+                contentSize: messengerNode.view.contentSize,
+                targetOffset: offset,
+                leadingScreens: messengerNode.view.leadingScreensForBatching)
+            {
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] shouldHandleBatchFetch ==> batchFetchDataInBackground")
                 
                 //lock and fetch
                 self.state.batchFetchLock.beginBatchFetching()
@@ -589,24 +885,31 @@ open class NMessenger: UIView {
      Triggers a batch fetch on a background thread.
      */
     fileprivate func batchFetchDataInBackground() {
-        waitForMessageLock {
-            //add a loading spinner to the top
-            if let loadingIndicator = self.messengerDelegate.batchFetchLoadingIndicator?() { //if delegate method
-                self.addMessages([loadingIndicator], atIndex: 0, scrollsToMessage: false, animation: .none, completion: nil)
-            } else { //standard nmessenger indicator
-                self.addMessages([self.standardLoadingIndicator], atIndex: 0, scrollsToMessage: false, animation: .none, completion: nil)
-            }
+        
+        guard let messengerDelegate = self.delegate else { return }
+        
+//        NSLog("=== NMessenger.batchFetchDataInBackground()")
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] batchFetchDataInBackground.waitForMessageLock")
+        self.waitForMessageLock {
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] batchFetchDataInBackground.waitForMessageLock")
+            
+            let loadingIndicator =
+                messengerDelegate.batchFetchLoadingIndicator?() ?? self.standardLoadingIndicator
+            
+            //if delegate method
+            self.addMessages([loadingIndicator],
+                             atIndex: self.allMessages().count,
+                             scrollsToMessage: false,
+                             animation: .none,
+                             completion: nil)
         }
         
         //run this on a background thread
         DispatchQueue.global().async {
-            self.messengerDelegate.batchFetchContent?()
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] batchFetchDataInBackground.invokeAppCode")
+            messengerDelegate.batchFetchContent?()
         }
-        
-        
-        //DispatchQueue.global(priority: DispatchQueue.GlobalQueuePriority.default).async {
-        //    self.messengerDelegate.batchFetchContent?()
-        //}
     }
     
     /**
@@ -621,6 +924,8 @@ open class NMessenger: UIView {
                                          animation: UITableViewRowAnimation,
                                         completion: (()->Void)?)
     {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] removeCells")
+        
         DispatchQueue.main.async
         {
             //update the state
@@ -635,10 +940,14 @@ open class NMessenger: UIView {
             }
             
             //remove rows
+            
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] removeCells.performBatch")
             self.messengerNode.performBatch(animated: animated,
                                              updates: updatesBlock)
             {
                 (finised) in
+                
+//                NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] removeCells.performBatch")
                 completion?()
             }
         }
@@ -656,8 +965,10 @@ open class NMessenger: UIView {
                                  animation: UITableViewRowAnimation,
                                 completion: (()->Void)?)
     {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] renderDiff")
+        
         //done animating
-        let animated = animation != .none
+        let animated = (animation != .none)
         
         
         let updatesBlock =
@@ -683,11 +994,14 @@ open class NMessenger: UIView {
                 self.messengerNode.deleteRows(at: indexPaths, with: animation)
             }
         }
-            
+        
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [BEGIN] renderDiff.performBatch")
         self.messengerNode.performBatch(animated: animated,
                                          updates: updatesBlock)
         {
             (finished) in
+            
+//            NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] [END] renderDiff.performBatch")
             completion?()
         }
     }
@@ -695,18 +1009,32 @@ open class NMessenger: UIView {
     /**
      Checks if a batch fetch should occur. Slightly modified from FB code to
      */
-    fileprivate func shouldBatchFetch(_ context: ASBatchContext, direction: ASScrollDirection, bounds: CGRect, contentSize: CGSize, targetOffset: CGPoint, leadingScreens: CGFloat) -> Bool {
+    fileprivate func shouldBatchFetch(
+        _ context: ASBatchContext,
+        direction: ASScrollDirection,
+        bounds: CGRect,
+        contentSize: CGSize,
+        targetOffset: CGPoint,
+        leadingScreens: CGFloat) -> Bool
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] shouldBatchFetch")
         
         if context.isFetching() {
             return false
         }
         
-        if direction != .up {
+        if direction != .down {
             return false
         }
         
         if leadingScreens <= 0 || bounds.equalTo(CGRect.zero) {
             return false
+        }
+        
+        let FEW_MESSAGES_HOTFIX__MAGIC_NUMBER = 10
+        if (self.state.itemCount < FEW_MESSAGES_HOTFIX__MAGIC_NUMBER)
+        {
+            return true
         }
         
         let viewLength = bounds.size.height;
@@ -717,7 +1045,8 @@ open class NMessenger: UIView {
         let smallContent = (contentLength < viewLength)
         let triggerDistance = viewLength * leadingScreens
         
-        let remainingDistance = contentLength - viewLength - offset
+        // because of inverted TableNode - remaining distance is inverted too
+        let remainingDistance = self.messengerNode.view.contentSize.height - self.messengerNode.view.contentOffset.y - viewLength - offset
         
        // return smallContent || remainingDistance <= triggerDistance
         return !smallContent && remainingDistance <= triggerDistance
@@ -795,30 +1124,55 @@ extension NMessenger {
      - paramter toPosition: the position to scroll to
      - parameter completion: a block to be called after the content has been removed
      */
-    public func removeMessageFromMessageGroup(_ message: GeneralMessengerCell, messageGroup: MessageGroup, scrollsToLastMessage: Bool, toPosition position: UITableViewScrollPosition?, completion: (()->Void)?) {
-        
+    public func removeMessageFromMessageGroup(
+        _ message: GeneralMessengerCell,
+        messageGroup: MessageGroup,
+        scrollsToLastMessage: Bool,
+        toPosition position: UITableViewScrollPosition?,
+        completion: (()->Void)?)
+    {
         //If it is the last message, remove it
-        if self.hasMessage(messageGroup) {
-            if messageGroup.messages.count == 1 && messageGroup.messages.first == message {
-                let animation = messageGroup.isIncomingMessage ? UITableViewRowAnimation.left : UITableViewRowAnimation.right
-                self.removeMessagesWithBlock([messageGroup], animation: animation, completion: { 
-                    completion?()
-                })
+        if self.hasMessage(messageGroup)
+        {
+            if let firstMessage = messageGroup.messages.first,
+               (firstMessage == message)
+            {
+                let animation =
+                    messageGroup.isIncomingMessage
+                        ? UITableViewRowAnimation.left
+                        : UITableViewRowAnimation.right
+                
+                self.removeMessagesWithBlock(
+                    [messageGroup],
+                    animation: animation,
+                    completion: completion)
+
                 return
             }
         }
         
         //otherwise delete it from the group
-        messageGroup.removeMessageFromGroup(message, completion: {
-            if scrollsToLastMessage {
-                if let position = position {
-                    self.scrollToMessage(messageGroup, atPosition: position, animated: true)
-                } else {
-                    self.scrollToMessage(messageGroup, atPosition: .bottom, animated: true)
+        messageGroup.removeMessageFromGroup(message)
+        {
+            if scrollsToLastMessage
+            {
+                if let position = position
+                {
+                    self.scrollToMessage(
+                        messageGroup,
+                        atPosition: position,
+                        animated: true)
+                }
+                else
+                {
+                    self.scrollToMessage(
+                        messageGroup,
+                        atPosition: .bottom,
+                        animated: true)
                 }
             }
             completion?()
-        })
+        }
     }
 }
 
@@ -926,17 +1280,17 @@ extension NMessenger: ASTableDelegate, ASTableDataSource {
      When this is triggered, we decide if a prefetch is needed
      */
     
-    public func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+    public func scrollViewWillEndDragging(
+        _ scrollView: UIScrollView,
+        withVelocity velocity: CGPoint,
+        targetContentOffset: UnsafeMutablePointer<CGPoint>)
+    {
+//        NSLog("[Main Thread: \(Thread.isMainThread)] [NMessenger] scrollViewWillEndDragging ==> shouldHandleBatchFetch")
+        
         //if targetContentOffset != nil {
-            shouldHandleBatchFetch((targetContentOffset.pointee))
+            self.shouldHandleBatchFetch(targetContentOffset.pointee)
         //}
     }
-    
-    /*public func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>?) {
-        if targetContentOffset != nil {
-            shouldHandleBatchFetch((targetContentOffset?.pointee)!)
-        }
-    }*/
     
     /**
      Keeps track of the current scroll direction. This state can be obtained
