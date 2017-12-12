@@ -21,21 +21,28 @@ open class ContentNode: ASDisplayNode {
     // MARK: Public Parameters
     /** Bubble that defines the background for the message*/
     open var backgroundBubble: Bubble?
+    
+    
     /** UIViewController that holds the cell. Allows the cell the present View Controllers. Generally used for UIMenu or UIAlert Options*/
     open weak var currentViewController: UIViewController?
+    
+    
     /** MessageConfigurationProtocol hold common definition for all messages. Defaults to **StandardMessageConfiguration***/
-    open var bubbleConfiguration : BubbleConfigurationProtocol = StandardBubbleConfiguration() {
-        didSet {
+    open var bubbleConfiguration : BubbleConfigurationProtocol = StandardBubbleConfiguration()
+    {
+        didSet
+        {
             self.updateBubbleConfig(self.bubbleConfiguration)
         }
     }
     /** Bool if the cell is an incoming or out going message.
      Set backgroundBubble.bubbleColor when value is changed
      */
-    open var isIncomingMessage = true {
-        didSet {
-             self.backgroundBubble?.bubbleColor = isIncomingMessage ? bubbleConfiguration.getIncomingColor() : bubbleConfiguration.getOutgoingColor()
-            
+    open var isIncomingMessage = true
+    {
+        didSet
+        {
+            self.updateBackgroundBubbleColor()
             self.setNeedsLayout()
         }
     }
@@ -67,12 +74,21 @@ open class ContentNode: ASDisplayNode {
     /** Updates the bubble config by setting all necessary properties (background bubble, bubble color, layout)
      - parameter newValue: the new BubbleConfigurationProtocol
      */
-    open func updateBubbleConfig(_ newValue: BubbleConfigurationProtocol) {
+    open func updateBubbleConfig(_ newValue: BubbleConfigurationProtocol)
+    {
         self.backgroundBubble = self.bubbleConfiguration.getBubble()
         
-        self.backgroundBubble?.bubbleColor = isIncomingMessage ? bubbleConfiguration.getIncomingColor() : bubbleConfiguration.getOutgoingColor()
+        self.updateBackgroundBubbleColor()
         
         self.setNeedsLayout()
+    }
+    
+    public func updateBackgroundBubbleColor()
+    {
+        self.backgroundBubble?.bubbleColor =
+            self.isIncomingMessage
+                ? self.bubbleConfiguration.getIncomingColor()
+                : self.bubbleConfiguration.getOutgoingColor()
     }
     
     /**
@@ -100,14 +116,21 @@ open class ContentNode: ASDisplayNode {
     /**
      Draws the content in the bubble. This is called on a background thread.
      */
-    open func drawRect(_ bounds: CGRect, withParameters parameters: NSObjectProtocol!,
-                  isCancelled isCancelledBlock: asdisplaynode_iscancelled_block_t, isRasterizing: Bool) {
+    @objc open func drawRect(_ bounds: CGRect,
+                             withParameters parameters: NSObjectProtocol!,
+                             isCancelled isCancelledBlock: asdisplaynode_iscancelled_block_t,
+                             isRasterizing: Bool)
+    {
+        // print("[NMessenger] ContentNode.drawRect | isRasterizing=\(isRasterizing)")
         self.isOpaque = false
-        if !isRasterizing {
+        
+        if !isRasterizing
+        {
             self.calculateLayerPropertiesThatFit(bounds)
             
             //call the main queue
-            DispatchQueue.main.async {
+            DispatchQueue.main.async
+            {
                 self.layoutLayers()
             }
         }
@@ -150,10 +173,15 @@ open class ContentNode: ASDisplayNode {
      - parameter closure: Must be an ()->()
      */
     open func delay(_ delay: Double, closure: @escaping ()->()) {
+        
+        let timeIncrement =
+            Double(Int64(delay * Double(NSEC_PER_SEC))) / Double(NSEC_PER_SEC)
+        let absoluteTimeIncremented =
+            DispatchTime.now() + timeIncrement
+        
         DispatchQueue.main.asyncAfter(
-            deadline: DispatchTime.now() + Double(Int64(delay * Double(NSEC_PER_SEC))) / Double(NSEC_PER_SEC),
-            execute: closure
-        )
+            deadline: absoluteTimeIncremented,
+            execute: closure)
     }
 
     

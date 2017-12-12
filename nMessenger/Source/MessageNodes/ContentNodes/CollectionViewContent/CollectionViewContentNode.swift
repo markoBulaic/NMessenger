@@ -154,7 +154,7 @@ open class CollectionViewContentNode: ContentNode
         let collectionViewMessageNode =
             ASCollectionNode(collectionViewLayout: flowLayout)
         
-            collectionViewMessageNode.backgroundColor = UIColor.white
+            collectionViewMessageNode.backgroundColor = UIColor.clear
             collectionViewMessageNode.accessibilityIdentifier = "CollectionViewWithCustomViews"
 
         self.collectionViewMessageNode = collectionViewMessageNode
@@ -189,7 +189,7 @@ open class CollectionViewContentNode: ContentNode
         let collectionViewMessageNode =
             ASCollectionNode(collectionViewLayout: flowLayout)
 
-            collectionViewMessageNode.backgroundColor = UIColor.white
+            collectionViewMessageNode.backgroundColor = UIColor.clear
             
             collectionViewMessageNode.accessibilityIdentifier = "CollectionViewWithCustomNodes"
         
